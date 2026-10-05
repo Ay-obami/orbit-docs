@@ -10,11 +10,11 @@ Call this after the subscriber's `approve` and `create_vault` transactions are c
 ## Body
 
 <ParamField body="plan_id" type="uuid" required>
-  Plan being subscribed to.
+  Plan being subscribed to. Must be a valid UUID.
 </ParamField>
 
 <ParamField body="customer_wallet_address" type="string" required>
-  Subscriber's Stellar account (`G...`).
+  Subscriber's Stellar account (`G...`). Must be a valid Ed25519 public key.
 </ParamField>
 
 ## Request
@@ -39,3 +39,11 @@ curl -X POST http://localhost:3001/subscriptions \
   }
 }
 ```
+
+## Errors
+
+| Status | When |
+|---|---|
+| `400` | `plan_id` is not a valid UUID, or `customer_wallet_address` is not a valid Stellar public key |
+| `404` | No plan has this `plan_id` |
+| `500` | Database error, including a wallet that is already subscribed to this plan |

@@ -8,19 +8,19 @@ description: "POST /plans creates a recurring plan owned by a merchant."
 ## Body
 
 <ParamField body="merchant_id" type="uuid" required>
-  Merchant that owns the plan.
+  Merchant that owns the plan. Must be a valid UUID.
 </ParamField>
 
 <ParamField body="name" type="string" required>
-  Shown at checkout, for example `Pro Monthly`.
+  Shown at checkout, for example `Pro Monthly`. Cannot be empty or only spaces.
 </ParamField>
 
-<ParamField body="usdc_amount" type="integer" required>
-  Raw token units (7 decimals). `290000000` = 29 USDC.
+<ParamField body="usdc_amount" type="number" required>
+  Raw token units (7 decimals). `290000000` = 29 USDC. Must be greater than 0.
 </ParamField>
 
 <ParamField body="interval_seconds" type="integer" required>
-  Minimum gap between pulls. `2592000` = 30 days.
+  Minimum gap between pulls. `2592000` = 30 days. Must be a whole number greater than 0.
 </ParamField>
 
 ## Request
@@ -52,7 +52,9 @@ curl -X POST http://localhost:3001/plans \
 }
 ```
 
+## Errors
+
 | Status | When |
 |---|---|
-| `400` | A required field is missing |
-| `500` | Database error |
+| `400` | A field is missing or breaks one of the rules above. See [validation errors](/api-reference/errors#validation-errors) |
+| `500` | Database error, for example a `merchant_id` that does not exist |

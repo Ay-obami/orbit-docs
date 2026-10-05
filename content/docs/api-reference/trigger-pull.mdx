@@ -14,11 +14,11 @@ Builds `pull_funds(user, merchant)`, simulates it with `prepareTransaction`, sig
 ## Body
 
 <ParamField body="subscription_id" type="uuid" required>
-  Subscription to bill.
+  Subscription to bill. Must be a valid UUID.
 </ParamField>
 
 <ParamField body="merchant_secret" type="string" required>
-  Merchant's secret seed (`S...`). Must match the wallet of the plan's owner.
+  Merchant's secret seed (`S...`). Must be a valid Stellar secret key and match the wallet of the plan's owner.
 </ParamField>
 
 ## Request
@@ -38,13 +38,15 @@ curl -X POST http://localhost:3001/trigger-pull \
 }
 ```
 
+## Errors
+
 | Status | When |
 |---|---|
 | `202` | Submitted but not confirmed before the poll timeout. `next_billing_date` is unchanged |
-| `400` | A field is missing |
+| `400` | `subscription_id` is not a valid UUID, or `merchant_secret` is missing or is not a valid Stellar secret key |
 | `401` | Secret does not match the plan owner's wallet |
-| `404` | Subscription not found |
-| `500` | Simulation or submission failed. See [contract errors](/contracts/errors) |
+| `404` | Subscription not found, or the plan's merchant no longer exists |
+| `500` | Simulation or submission failed, or the server is missing `ORBIT_CONTRACT_ID`. See [contract errors](/contracts/errors) |
 | `502` | The transaction failed on-chain. The subscription is marked `past_due` |
 
 ## How `next_billing_date` is calculated
