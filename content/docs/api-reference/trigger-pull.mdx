@@ -5,7 +5,7 @@ description: "POST /trigger-pull signs and submits pull_funds for a subscription
 
 <Endpoint method="POST" path="/trigger-pull" />
 
-Builds `pull_funds(user, merchant)`, simulates it with `prepareTransaction`, signs it with the merchant key and submits it to Soroban Testnet. Then it moves `next_billing_date` forward.
+Builds `pull_funds(user, merchant)`, simulates it with `prepareTransaction`, signs it with the merchant key and submits it to Soroban Testnet. Once the transaction is confirmed, it sets `next_billing_date` to the pull time plus the plan's `interval_seconds`.
 
 <Warning>
   **Testnet only.** The merchant's secret seed travels in the request body. In production, sign on the client (Freighter) or with a KMS-held key.
@@ -40,11 +40,28 @@ curl -X POST http://localhost:3001/trigger-pull \
 
 | Status | When |
 |---|---|
+| `202` | Submitted but not confirmed before the poll timeout. `next_billing_date` is unchanged |
 | `400` | A field is missing |
 | `401` | Secret does not match the plan owner's wallet |
 | `404` | Subscription not found |
 | `500` | Simulation or submission failed. See [contract errors](/contracts/errors) |
+| `502` | The transaction failed on-chain. The subscription is marked `past_due` |
+
+## How `next_billing_date` is calculated
+
+When the pull is confirmed on-chain, the API sets:
+
+```
+next_billing_date = pull time + plan.interval_seconds
+```
+
+- **Pull time** is the API server's clock at the moment it sees the confirmation, not the previous `next_billing_date` and not the ledger timestamp.
+- The interval is a fixed number of seconds, not a calendar month. See the "Intervals are fixed durations" note in [Plans](/subscriptions/plans#common-intervals).
+- A late pull pushes every later cycle back by the same delay. The schedule does not catch up.
+- `next_billing_date` only moves on a `200`. A `202` or `502` leaves it where it was.
+
+**Example.** A plan with `interval_seconds: 604800` (7 days) pulled at `2026-10-01T10:00:00Z` gets `next_billing_date` `2026-10-08T10:00:00Z`.
 
 <Note>
-  The response comes back once the transaction is **submitted**, before it is confirmed. Poll `getTransaction(txHash)` before you mark the cycle as paid.
+  On a `202` the outcome is unknown. Poll `getTransaction(txHash)` before you mark the cycle as paid or retry the pull.
 </Note>
