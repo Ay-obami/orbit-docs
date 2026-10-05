@@ -55,6 +55,59 @@ export function Subscribe() {
   Base URL of your Merchant API.
 </ParamField>
 
+## States
+
+The widget is always in exactly one of these states.
+
+| State | When | What the user sees |
+|---|---|---|
+| Loading | The widget is fetching `GET {apiUrl}/plans/{planId}` | "Loading Orbit checkout..." |
+| Error | The plan request failed, or no `planId` was passed | "Unable to load plan", a short message and a **Try again** button |
+| Ready | The plan loaded and no wallet is connected | Plan name, merchant, price, interval and a **Connect Freighter Wallet** button |
+| Connected | Freighter returned an address | The shortened address and a **Subscribe & Approve** button |
+| Success | `POST /subscriptions` returned `201` | "Payment Approved" and "You are now subscribed to *plan name*." |
+
+### Loading
+
+Shown on mount and again after every retry. It is skipped when you pass `planData`, because there is nothing to fetch.
+
+### Error and retry
+
+The widget enters the error state when the plan request cannot be completed:
+
+- the network request fails (API down, wrong host, blocked by CORS), or
+- the API answers with any non-2xx status (unknown or malformed `planId`, server error).
+
+The user sees the heading "Unable to load plan" with the message "Unable to load plan. Please check your connection or try again." and a **Try again** button. The button sends the same request again and puts the widget back in the loading state. There is no automatic retry and no limit on manual retries.
+
+The widget never shows placeholder plan data. If the plan cannot be loaded, no price is displayed and the user cannot subscribe.
+
+If neither `planId` nor `planData` is passed, the message is "No planId provided." instead. Retrying does not help in that case, so fix the props.
+
+### Ready
+
+Wallet problems are shown inline under the connect button and do not leave this state:
+
+- Freighter not installed: "Install Freighter to continue." with a **Get Freighter** link.
+- Request rejected or extension locked: the message Freighter returned, or "Could not reach Freighter. Is the extension unlocked?"
+
+### Connected
+
+While the request is in flight the button reads "Approving..." and is disabled. If `POST /subscriptions` does not return `201`, the API's error message is shown above the button and the user can press it again.
+
+### Success
+
+Terminal state. The widget does not reset on its own. Remount it to start a new checkout.
+
+### Troubleshooting the error state
+
+Open the browser console first. The widget logs `Could not load plan from API:` followed by the underlying error.
+
+- **Wrong `apiUrl`.** The default is `http://localhost:3001`, which only works on your own machine. Pass your deployed Merchant API URL with no trailing slash, and use `https` if your page is served over `https`.
+- **CORS.** The browser blocks the request if the API does not allow your page's origin. Check the network tab for a failed request with no status code. The reference backend allows every origin, so this usually means a proxy or a custom deployment is stripping the headers.
+- **Unknown `planId`.** The id must be the plan's UUID exactly as returned by `POST /plans`. Test it directly with `curl {apiUrl}/plans/{planId}`. A `400` means it is not a valid UUID, and a `404` or `500` means no plan has that id.
+- **API not running or misconfigured.** A `500` with `Supabase client not initialized` means the backend is missing `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY`.
+
 ## Signing the handshake yourself
 
 For full control, build the two subscriber transactions with `@stellar/stellar-sdk` and sign them with Freighter:
