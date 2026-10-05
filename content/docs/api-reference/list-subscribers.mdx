@@ -8,7 +8,7 @@ description: "GET /subscribers lists subscriptions across every plan a merchant 
 ## Query
 
 <ParamField query="merchant_id" type="uuid" required>
-  Merchant whose subscribers to list.
+  Merchant whose subscribers to list. Must be a valid UUID.
 </ParamField>
 
 ## Request
@@ -32,3 +32,12 @@ curl "http://localhost:3001/subscribers?merchant_id=3f0c6a1e-..."
   ]
 }
 ```
+
+A merchant with no subscribers, or a `merchant_id` that does not exist, returns `200` with an empty `subscribers` array.
+
+## Errors
+
+| Status | When |
+|---|---|
+| `400` | `merchant_id` is missing or is not a valid UUID |
+| `500` | Database error |

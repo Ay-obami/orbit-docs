@@ -32,13 +32,18 @@ paths:
                   format: uuid
                 name:
                   type: string
+                  minLength: 1
+                  description: Cannot be empty or only spaces.
                   example: Pro Monthly
                 usdc_amount:
-                  type: integer
+                  type: number
+                  exclusiveMinimum: 0
                   description: Raw token units (7 decimals). 290000000 = 29 USDC.
                   example: 290000000
                 interval_seconds:
                   type: integer
+                  minimum: 1
+                  description: Minimum gap between pulls, in seconds.
                   example: 2592000
       responses:
         '201':
@@ -90,12 +95,10 @@ paths:
                               wallet_address:
                                 type: string
                                 example: GBXQ4T7W91LK3PMZ0VR82C5E7NDF6U9H4YJ2A8S
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Plan not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/PlanNotFound'
         '500':
           $ref: '#/components/responses/ServerError'
   /subscriptions:
@@ -119,7 +122,8 @@ paths:
                   format: uuid
                 customer_wallet_address:
                   type: string
-                  description: Subscriber's Stellar account (G...).
+                  pattern: '^G[A-Z2-7]{55}$'
+                  description: Subscriber's Stellar account (G...). Must be a valid Ed25519 public key.
       responses:
         '201':
           description: Subscription created
@@ -135,6 +139,8 @@ paths:
                     $ref: '#/components/schemas/Subscription'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/PlanNotFound'
         '500':
           $ref: '#/components/responses/ServerError'
   /subscribers:
@@ -184,7 +190,8 @@ paths:
       description: >
         Builds a `pull_funds(user, merchant)` invocation, simulates it with
         `prepareTransaction`, signs it with the merchant key, and submits it to
-        Soroban Testnet. On submission, `next_billing_date` moves forward.
+        Soroban Testnet. Once the transaction is confirmed, `next_billing_date`
+        is set to the pull time plus the plan's `interval_seconds`.
         TESTNET ONLY: the merchant secret travels in the request body.
       requestBody:
         required: true
@@ -199,10 +206,13 @@ paths:
                   format: uuid
                 merchant_secret:
                   type: string
-                  description: Merchant's Stellar secret seed (S...). Must match the plan owner's wallet.
+                  minLength: 1
+                  description: >
+                    Merchant's Stellar secret seed (S...). Must be a valid
+                    Stellar secret key and match the plan owner's wallet.
       responses:
         '200':
-          description: Transaction submitted
+          description: Transaction confirmed on-chain
           content:
             application/json:
               schema:
@@ -213,22 +223,72 @@ paths:
                     example: Successfully pulled funds on-chain!
                   txHash:
                     type: string
+        '202':
+          description: >
+            Submitted but not confirmed before the poll timeout.
+            `next_billing_date` is unchanged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Transaction submitted but not yet confirmed; check back later
+                  txHash:
+                    type: string
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: >
+            Request failed validation, or `merchant_secret` is not a valid
+            Stellar secret key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validation:
+                  summary: Field failed validation
+                  value:
+                    error: 'Invalid input on subscription_id: subscription_id must be a valid UUID'
+                invalidSecret:
+                  summary: Secret is not a Stellar secret key
+                  value:
+                    error: 'Invalid merchant_secret: not a valid Stellar secret key'
         '401':
           description: Secret does not match the plan owner's wallet
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                error: Merchant secret does not match the plan owner's address
         '404':
-          description: Subscription not found
+          description: Subscription not found, or the plan's merchant no longer exists
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                subscription:
+                  value:
+                    error: Subscription not found
+                merchant:
+                  value:
+                    error: Merchant not found
         '500':
           $ref: '#/components/responses/ServerError'
+        '502':
+          description: The transaction failed on-chain. The subscription is marked `past_due`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Transaction failed on-chain
+                  txHash:
+                    type: string
 components:
   schemas:
     Plan:
@@ -243,7 +303,7 @@ components:
         name:
           type: string
         usdc_amount:
-          type: integer
+          type: number
         interval_seconds:
           type: integer
         created_at:
@@ -276,14 +336,40 @@ components:
           type: string
   responses:
     BadRequest:
-      description: Missing required fields
+      description: >
+        Request failed validation. The message names the first field that
+        failed, as `Invalid input on <field>: <reason>`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          examples:
+            wrongFormat:
+              summary: Field has the wrong format
+              value:
+                error: 'Invalid input on merchant_id: merchant_id must be a valid UUID'
+            missingField:
+              summary: Field is missing
+              value:
+                error: 'Invalid input on name: Invalid input: expected string, received undefined'
+    PlanNotFound:
+      description: Plan not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Plan not found
     ServerError:
-      description: Database or Soroban error; message passed through
+      description: >
+        Server misconfiguration, database error or Soroban error. The message
+        is passed through.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+          examples:
+            notConfigured:
+              summary: Supabase env vars are missing
+              value:
+                error: Supabase client not initialized

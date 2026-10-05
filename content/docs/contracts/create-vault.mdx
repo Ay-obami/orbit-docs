@@ -31,17 +31,28 @@ pub fn create_vault(
 </ParamField>
 
 <ParamField path="amount_per_interval" type="i128" required>
-  Raw units pulled each cycle. `290000000` = 29 USDC.
+  Raw units pulled each cycle. `290000000` = 29 USDC. Must be greater than zero.
 </ParamField>
 
 <ParamField path="interval_seconds" type="u64" required>
-  Minimum ledger-time gap between pulls.
+  Minimum ledger-time gap between pulls. Must be greater than zero.
 </ParamField>
 
 ## Effects
 
 1. Writes `VaultData { token, amount_per_interval, interval_seconds, last_pull_timestamp: 0 }` under `VaultKey { user, merchant }` in persistent storage.
 2. Overwrites any vault that already exists for the same pair.
+
+## Errors
+
+Both checks run after `user.require_auth()` and before anything is written, so a rejected call leaves any existing vault untouched.
+
+| Message | Cause | Fix |
+|---|---|---|
+| `amount_per_interval must be positive` | `amount_per_interval <= 0` | Pass an amount greater than zero, in raw token units |
+| `interval_seconds must be greater than zero` | `interval_seconds == 0` | Pass an interval of at least 1 second |
+
+See [contract errors](/contracts/errors) for the full list and how to catch them in simulation.
 
 ## Preconditions for later pulls
 

@@ -17,7 +17,7 @@ A billing cycle is one successful `pull_funds`. Only the merchant can sign it, b
   </Tab>
 
   <Tab title="Merchant API">
-    `POST /trigger-pull` builds, simulates, signs and submits `pull_funds`, then moves `next_billing_date` forward.
+    `POST /trigger-pull` builds, simulates, signs and submits `pull_funds`. Once the transaction is confirmed, it sets `next_billing_date` to the pull time plus the plan's `interval_seconds`.
 
     ```bash
     curl -X POST http://localhost:3001/trigger-pull \
@@ -53,6 +53,21 @@ A billing cycle is one successful `pull_funds`. Only the merchant can sign it, b
 - The first pull on a new vault is allowed right away.
 - After that, pull when `ledger_time >= last_pull_timestamp + interval_seconds`. The ledger clock can differ slightly from your server's clock, so simulate first.
 - A pull that fails does not update `last_pull_timestamp`, so you can simply retry it.
+
+## How `next_billing_date` is calculated
+
+When a pull through `POST /trigger-pull` is confirmed on-chain, the API sets:
+
+```
+next_billing_date = pull time + plan.interval_seconds
+```
+
+- **Pull time** is the API server's clock at the moment it sees the confirmation, not the previous `next_billing_date` and not the ledger timestamp.
+- The interval is a fixed number of seconds, not a calendar month. See the "Intervals are fixed durations" note in [Plans](/subscriptions/plans#common-intervals).
+- A late pull pushes every later cycle back by the same delay. The schedule does not catch up.
+- A pull that fails or is not confirmed in time leaves `next_billing_date` where it was.
+
+**Example.** A plan with `interval_seconds: 604800` (7 days) pulled at `2026-10-01T10:00:00Z` gets `next_billing_date` `2026-10-08T10:00:00Z`.
 
 ## Failure handling
 

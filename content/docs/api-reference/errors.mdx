@@ -6,15 +6,68 @@ description: "HTTP status codes returned by the Merchant API."
 Every error response body has this shape:
 
 ```json
-{ "error": "Missing required fields" }
+{ "error": "Invalid input on merchant_id: merchant_id must be a valid UUID" }
 ```
 
 | Status | When | Retry? |
 |---|---|---|
-| `400` | A required field is missing | No. Fix the request |
+| `400` | The request failed validation: a field is missing, has the wrong type or the wrong format | No. Fix the request |
 | `401` | `merchant_secret` does not match the plan owner's wallet (`/trigger-pull`) | No |
-| `404` | Plan or subscription not found | No |
-| `500` | Database error, or the Soroban simulation or submission failed. The message is passed through | Depends on the message |
+| `404` | Plan, subscription or merchant not found | No |
+| `500` | Server misconfiguration, database error, or the Soroban simulation or submission failed. The message is passed through | Depends on the message |
+| `502` | The pull transaction failed on-chain (`/trigger-pull`) | Depends on the cause. See [contract errors](/contracts/errors) |
+
+## Validation errors
+
+Every request is validated before it reaches the database. A `400` reports the **first** field that failed, in this format:
+
+```text
+Invalid input on <field>: <reason>
+```
+
+| Field | Rule | Reason |
+|---|---|---|
+| `merchant_id`, `plan_id`, `subscription_id` | Must be a UUID | `<field> must be a valid UUID` |
+| `id` (path) | Must be a UUID | `id parameter must be a valid UUID` |
+| `name` | Must not be empty or only spaces | `name cannot be empty` |
+| `usdc_amount` | Must be a number greater than 0 | `usdc_amount must be greater than 0` |
+| `interval_seconds` | Must be a whole number greater than 0 | `interval_seconds must be a positive integer` |
+| `customer_wallet_address` | Must be a Stellar public key (`G...`) | `must be a valid Stellar Ed25519 public address` |
+| `merchant_secret` | Must not be empty | `merchant_secret is required` |
+
+A field that is missing or has the wrong type gets a generic reason instead:
+
+```json
+{ "error": "Invalid input on name: Invalid input: expected string, received undefined" }
+```
+
+`usdc_amount` and `interval_seconds` also accept numeric strings such as `"2592000"`. A value that is not a number returns `expected number, received NaN`, and a fractional `interval_seconds` returns `expected int, received number`.
+
+`/trigger-pull` has one more `400` that does not use this format. It is returned when `merchant_secret` is not a valid Stellar secret key:
+
+```json
+{ "error": "Invalid merchant_secret: not a valid Stellar secret key" }
+```
+
+## Not found
+
+| Message | Returned by |
+|---|---|
+| `Plan not found` | [`GET /plans/{id}`](/api-reference/get-plan), and [`POST /subscriptions`](/api-reference/create-subscription) when `plan_id` does not exist |
+| `Subscription not found` | [`POST /trigger-pull`](/api-reference/trigger-pull) |
+| `Merchant not found` | [`POST /trigger-pull`](/api-reference/trigger-pull) when the plan's merchant no longer exists |
+
+A malformed ID is a `400`, not a `404`. You only get a `404` for a well-formed UUID that matches nothing.
+
+## Server errors
+
+| Message | Cause | Fix |
+|---|---|---|
+| `Supabase client not initialized` | `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is not set on the API server | Set both and restart the server |
+| `ORBIT_CONTRACT_ID not set in .env` | `ORBIT_CONTRACT_ID` is not set (`/trigger-pull`) | Set it to the deployed contract ID |
+| Any other message | Passed through from the database or from Soroban | See below for `/trigger-pull` |
+
+Recording the same wallet on the same plan twice also returns a `500`, with the database's unique constraint message.
 
 ## Soroban failures on `/trigger-pull`
 
@@ -26,6 +79,12 @@ A `500` from `/trigger-pull` carries the simulation error. Match it against the 
 | `Vault does not exist` | The subscriber has not run `create_vault` |
 | allowance or balance error | Mark the subscription `past_due` and notify the subscriber |
 
+A `502` means the transaction was submitted and then failed on-chain. The body includes the `txHash`, and the API marks the subscription `past_due`:
+
+```json
+{ "error": "Transaction failed on-chain", "txHash": "6f4a8b...19e0" }
+```
+
 <Note>
-  The endpoint returns once the transaction is **submitted**, before it is confirmed. Poll `getTransaction(txHash)` before you mark the cycle as paid.
+  A `202` is not an error. The transaction was submitted but not confirmed before the poll timeout, so the outcome is unknown. Poll `getTransaction(txHash)` before you mark the cycle as paid or retry the pull.
 </Note>
