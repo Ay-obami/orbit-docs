@@ -7,6 +7,8 @@ Orbit currently fails with host panics that carry a string message, not typed `c
 
 | Message / source | Entrypoint | Cause | Fix |
 |---|---|---|---|
+| `amount_per_interval must be positive` | `create_vault` | `amount_per_interval <= 0` | Pass an amount greater than zero, in raw token units |
+| `interval_seconds must be greater than zero` | `create_vault` | `interval_seconds == 0` | Pass an interval of at least 1 second |
 | `Vault does not exist` | `pull_funds` | No `create_vault` for this `(user, merchant)` | Subscriber completes the handshake |
 | `Too early to pull funds` | `pull_funds` | `now < last_pull + interval` | Retry after the next eligible time |
 | Auth error | all | Required signer missing | Sign with `user`, `merchant` or `sender` |
