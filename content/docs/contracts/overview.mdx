@@ -1,6 +1,6 @@
 ---
 title: "OrbitContract"
-description: "A no_std Soroban contract with three entrypoints, persistent vault storage and no admin."
+description: "A no_std Soroban contract with four entrypoints, persistent vault storage and no admin."
 ---
 
 | | |
@@ -14,9 +14,12 @@ description: "A no_std Soroban contract with three entrypoints, persistent vault
 
 ## Entrypoints
 
-<Columns cols={3}>
+<Columns cols={2}>
   <Card title="create_vault" icon="lock" href="/contracts/create-vault">
     Subscriber sets the billing terms for one merchant.
+  </Card>
+  <Card title="get_vault" icon="search" href="/contracts/get-vault">
+    Anyone reads the terms and last pull time. Read-only.
   </Card>
   <Card title="pull_funds" icon="arrow-down-to-line" href="/contracts/pull-funds">
     Merchant collects one cycle.

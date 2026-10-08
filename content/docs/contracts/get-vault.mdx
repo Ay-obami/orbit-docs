@@ -1,0 +1,77 @@
+---
+title: "get_vault"
+description: "Read the current terms and last pull time for a (user, merchant) pair."
+---
+
+```rust
+pub fn get_vault(env: Env, user: Address, merchant: Address) -> Option<VaultData>
+```
+
+**Auth:** none. Anyone can call it.
+
+<Note>
+  **Preview.** `get_vault` is in the contract source on `main` but not yet in the testnet deployment `CAZBZBUW...CDYQNG`. It becomes callable there after the next redeploy.
+</Note>
+
+## Parameters
+
+<ParamField path="user" type="Address" required>
+  The subscriber the vault belongs to.
+</ParamField>
+
+<ParamField path="merchant" type="Address" required>
+  The merchant the vault pays. Together with `user`, it forms the vault key.
+</ParamField>
+
+## Returns
+
+`Some(VaultData)` if a vault exists for the pair, otherwise `None`. It does not panic for a missing vault.
+
+```rust
+pub struct VaultData {
+    pub token: Address,
+    pub amount_per_interval: i128,
+    pub interval_seconds: u64,
+    pub last_pull_timestamp: u64,
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `token` | SEP-41 token the vault is billed in |
+| `amount_per_interval` | Raw units pulled each cycle. `290000000` = 29 USDC |
+| `interval_seconds` | Minimum ledger-time gap between pulls |
+| `last_pull_timestamp` | Ledger timestamp of the last successful pull. `0` until the first pull, and again after `create_vault` is re-run for the pair |
+
+## Effects
+
+None. It reads one persistent entry and writes nothing. It does not extend the vault's TTL, and it does not check the token allowance or balance, so a vault being returned does not mean the next pull will succeed.
+
+## When the next pull is allowed
+
+```
+last_pull_timestamp == 0  ->  now
+otherwise                 ->  last_pull_timestamp + interval_seconds
+```
+
+Compare that with the ledger timestamp, not your server clock.
+
+## Example
+
+Because the call is read-only, the CLI simulates it and prints the result without submitting a transaction.
+
+```bash
+stellar contract invoke --id $ORBIT --source subscriber --network testnet -- \
+  get_vault --user $SUBSCRIBER --merchant $MERCHANT
+```
+
+```json
+{
+  "token": "CDLZ...CYSC",
+  "amount_per_interval": "290000000",
+  "interval_seconds": 2592000,
+  "last_pull_timestamp": 0
+}
+```
+
+A pair with no vault prints `null`.
