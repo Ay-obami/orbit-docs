@@ -10,7 +10,7 @@ description: "A no_std Soroban contract with four entrypoints, persistent vault 
 | Target | `wasm32v1-none` |
 | Testnet ID | [`CAZBZBUWBSQYK2RZ6WHMXVDLIQHSU5WD7ANZYL6HLNSCRUOTNYCDYQNG`](https://stellar.expert/explorer/testnet/contract/CAZBZBUWBSQYK2RZ6WHMXVDLIQHSU5WD7ANZYL6HLNSCRUOTNYCDYQNG) |
 | Admin | None |
-| Events | None (index SAC `transfer` events) |
+| Events | `vault_created`, `funds_pulled`, `batch_disbursed`. See [Events](/contracts/events) |
 
 ## Entrypoints
 
@@ -57,10 +57,33 @@ pub struct PaymentSplit {
 
 | Key | Type | Value | TTL |
 |---|---|---|---|
-| `VaultKey { user, merchant }` | persistent | `VaultData` | Network default; not extended by the contract |
+| `VaultKey { user, merchant }` | persistent | `VaultData` | Extended by `create_vault` and `pull_funds` |
+
+### TTL extension
+
+`create_vault` and every successful `pull_funds` extend the TTL of both the vault entry and the contract instance, so a vault stays live between pulls without anyone paying to bump it by hand.
+
+```
+interval_ledgers = interval_seconds / 5            // about 5 seconds per ledger
+extend_to        = max(interval_ledgers + 120_960, 518_400)
+threshold        = 120_960
+```
+
+- `extend_to` is the billing interval plus a margin of about 7 days (`120_960` ledgers), with a floor of about 30 days (`518_400` ledgers).
+- The extension only happens when the remaining TTL is below `threshold` (about 7 days), so a call made while the entry already has plenty of TTL left does not extend it again.
+
+| `interval_seconds` | `extend_to` | Roughly |
+|---|---|---|
+| `86400` (1 day) | `518_400` ledgers | 30 days |
+| `2592000` (30 days) | `639_360` ledgers | 37 days |
+| `31536000` (365 days) | `6_428_160` ledgers | 372 days |
+
+<Note>
+  **Preview.** TTL extension is in the contract source on `main` but not yet in the testnet deployment `CAZBZBUW...CDYQNG`. Vaults on the current deployment keep the network default TTL until the next redeploy.
+</Note>
 
 <Warning>
-  The contract does not extend the TTL of vault entries. A vault that goes unused for longer than the persistent entry TTL gets archived and has to be restored before the next pull. Pulling on schedule keeps it live.
+  `get_vault` does not extend the TTL. A vault that is never pulled for longer than `extend_to` can still be archived and has to be restored before the next pull.
 </Warning>
 
 ## Token model

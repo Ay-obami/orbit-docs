@@ -1,0 +1,73 @@
+---
+title: "Events"
+description: "The events OrbitContract publishes, with their topics and data."
+---
+
+Each state-changing entrypoint publishes one event when it succeeds. The first topic is the event name as a `Symbol`, and the data is a tuple.
+
+<Note>
+  **Preview.** Events are in the contract source on `main` but not yet in the testnet deployment `CAZBZBUW...CDYQNG`. Until the next redeploy, index the token's `transfer` events instead.
+</Note>
+
+| Event | Published by | Topics | Data |
+|---|---|---|---|
+| `vault_created` | [`create_vault`](/contracts/create-vault) | `(vault_created, user, merchant)` | `(token, amount_per_interval, interval_seconds)` |
+| `funds_pulled` | [`pull_funds`](/contracts/pull-funds) | `(funds_pulled, user, merchant)` | `(amount_per_interval, timestamp)` |
+| `batch_disbursed` | [`batch_disburse`](/contracts/batch-disburse) | `(batch_disbursed, sender)` | `(token, recipient_count, total_amount)` |
+
+## Fields
+
+### `vault_created`
+
+| Position | Field | Type | Meaning |
+|---|---|---|---|
+| topic 1 | `user` | `Address` | Subscriber who signed |
+| topic 2 | `merchant` | `Address` | Merchant allowed to pull |
+| data 0 | `token` | `Address` | Token the vault is billed in |
+| data 1 | `amount_per_interval` | `i128` | Raw units per cycle |
+| data 2 | `interval_seconds` | `u64` | Minimum gap between pulls |
+
+It is published every time `create_vault` succeeds, including when it overwrites an existing vault for the same pair.
+
+### `funds_pulled`
+
+| Position | Field | Type | Meaning |
+|---|---|---|---|
+| topic 1 | `user` | `Address` | Subscriber who was charged |
+| topic 2 | `merchant` | `Address` | Merchant who was paid |
+| data 0 | `amount_per_interval` | `i128` | Raw units transferred |
+| data 1 | `timestamp` | `u64` | Ledger timestamp of the pull. This is the vault's new `last_pull_timestamp` |
+
+### `batch_disbursed`
+
+| Position | Field | Type | Meaning |
+|---|---|---|---|
+| topic 1 | `sender` | `Address` | Treasury that paid out |
+| data 0 | `token` | `Address` | Token paid in |
+| data 1 | `recipient_count` | `u32` | Number of splits in the batch |
+| data 2 | `total_amount` | `i128` | Sum of all split amounts, in raw units |
+
+One event covers the whole batch. For the amount each recipient received, read the token's `transfer` events in the same transaction.
+
+## Only on success
+
+An invocation that fails reverts completely, including its events. A rejected pull (too early, allowance exhausted, balance too low) leaves no Orbit event, so detect failures from the transaction result. See [contract errors](/contracts/errors).
+
+## Filtering
+
+Filter on the contract id and the first topic. Because `user` and `merchant` are topics, a merchant can subscribe to only its own pulls:
+
+```ts
+const { events } = await server.getEvents({
+  startLedger,
+  filters: [{
+    type: "contract",
+    contractIds: [ORBIT_CONTRACT_ID],
+    topics: [[
+      xdr.ScVal.scvSymbol("funds_pulled").toXDR("base64"),
+      "*",                                              // any user
+      new Address(MERCHANT).toScVal().toXDR("base64"),  // this merchant
+    ]],
+  }],
+});
+```
